@@ -1,35 +1,52 @@
-# mtool - High-Precision Multicast Diagnostic Tool
+# MTOOL - High-Performance Multicast Testing & Analysis Tool
 
-`mtool` is a high-performance command-line tool designed to bypass standard Windows network restrictions and perform precision multicast transmission, reception, and statistical analysis.
+### Receiver Mode
+![MTOOL Receiver GUI](assets/dashboard_gui_receiver.png)
+
+### Sender Mode
+![MTOOL Sender GUI](assets/dashboard_gui_sender.png)
+
+MTOOL is a professional, high-precision network utility designed for testing and analyzing IP Multicast traffic. It provides a real-time web-based dashboard for monitoring throughput, latency, jitter, and packet quality across modern network infrastructures.
 
 ## Key Features
-- **Precision DSCP Control**: Guarantees raw DSCP (QoS) tagging (0-63) by bypassing the OS-level Windows QoS scheduler.
-- **Real-Time Interaction**: On-the-fly adjustment of bandwidth, group addresses, ports, and source IPs via interactive hotkeys.
-- **Web-Based Dashboard**: Built-in Web UI providing real-time throughput charts and remote configuration.
-- **Advanced IGMP Management**: Maintains active state tracking to ensure proper Leave/Join packet sequencing during parameter changes.
-- **Npcap Integration**: Enables microsecond-level latency tracking and direct packet injection using raw sockets.
+
+- **High-Precision Transmission**: Sub-millisecond packet scheduling for steady-state bandwidth testing.
+- **Real-time Analytics**: Live charts for Throughput (Mbps/PPS), Latency (μs), and Jitter.
+- **Protocol Analysis**: Detects IGMP queries, actual DSCP tagging, TTL, and IP fragmentation.
+- **Multicast Group Support**: Full support for IGMP v2 (ASM) and IGMP v3 (SSM - Source Specific Multicast).
+- **Session Logging**: Capture detailed performance statistics to CSV for offline analysis and reporting.
+- **Modern Web UI**: Interactive, dark-mode dashboard with glassmorphism aesthetics.
 
 ## Quick Start
 
-### 1. Install Npcap
-This tool requires the [Npcap](https://npcap.com/) driver.
-> [!IMPORTANT]
-> During installation, you MUST check the box **"Install Npcap in WinPcap API-compatible mode"**. Without this, the tool will fail to locate the required libraries.
+### Prerequisites
+- **Windows OS**
+- **Npcap** (with "WinPcap API-compatible mode" enabled)
+- **Administrator Privileges** (required for raw socket operations)
 
-### 2. Execution
-Open a command prompt as **Administrator** and run:
-```cmd
-mtool.exe
+### Building the Project
+If you have the .NET Framework 4.0 (standard on most Windows systems) installed, you can compile MTOOL using the provided compiler:
+
+```powershell
+%SystemRoot%\Microsoft.NET\Framework\v4.0.30319\csc.exe /nologo /target:exe /out:bin\mtool.exe src\mtool.cs src\MToolCore.cs src\AppState.cs src\NetworkEngine.cs src\WebDashboard.cs
 ```
-Running without arguments will start an interactive setup wizard.
 
-## Documentation
-For detailed usage and command-line arguments, please refer to the following manuals:
+### Running MTOOL
+1. Launch `bin\mtool.exe` as **Administrator**.
+2. Select your network interface from the list.
+3. Access the dashboard via your browser (the tool will automatically open it for you).
 
-- [English Manual (manual_EN.md)](./manual_EN.md)
-- [日本語マニュアル (manual_JP.md)](./manual_JP.md)
+## Directory Structure
+- `src/`: Core source code (C#)
+- `tests/`: Unit test suite and verification scripts
+- `bin/`: Compiled binaries
+- `assets/`: UI resources, screenshots, and icons
+- `docs/`: Technical documentation and history
 
-## Requirements
-- **OS**: Windows 10 / 11 (x64)
-- **Privilege**: Administrator rights required.
-- **Dependency**: Npcap (WinPcap compatibility mode).
+## Resources
+- **Application Icon**: A high-resolution icon is available in `assets/icon.png`.
+  > [!TIP]
+  > To embed this icon into the executable, convert it to `.ico` format and add `/win32icon:assets\icon.ico` to the `csc` command during compilation.
+
+## License
+© 2026 Mono-Gen. All rights reserved.
