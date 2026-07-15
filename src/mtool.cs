@@ -20,11 +20,6 @@ namespace MMulticastTool
         private static bool _isAdmin = false;
         private static bool _isInputMode = false;
 
-        // Backup for Restore Defaults
-        private static string iGrp, iSrc, iMode; 
-        private static int iPort, iVer, iTtl, iSize, iDscp, iWeb; 
-        private static double iBw;
-
         static void Main(string[] args)
         {
             try { MainAsync(args).GetAwaiter().GetResult(); }
@@ -56,11 +51,8 @@ namespace MMulticastTool
             }
 
             if (string.IsNullOrEmpty(_config.InterfaceName) || _config.Port == 0) ShowWizard();
-            
-            // Backup initial values
-            iGrp = _config.GroupAddr; iPort = _config.Port; iSrc = _config.SourceAddr; 
-            iVer = _config.IgmpVersion; iMode = _config.IgmpMode; iTtl = _config.Ttl; 
-            iSize = _config.PacketSize; iDscp = _config.Dscp; iBw = _config.BandwidthMbps; iWeb = _config.WebPort;
+
+            _config.SnapshotInitial();
 
             _network = new NetworkEngine(_config, _stats, (evt, details) => { if (_dashboard != null) _dashboard.AddLog(evt, details); });
             _dashboard = new WebDashboard(_config, _stats);
@@ -123,11 +115,6 @@ namespace MMulticastTool
                 if (_isInputMode) { Thread.Sleep(500); continue; }
                 Thread.Sleep(1000); if (_isInputMode) continue;
 
-                if (_config.NeedsRestart) { // Check if restore requested via WebUI
-                    // Note: ResetParams is accepted via WebUI, we handle the logic here
-                    // This is a simple implementation of the signal from WebUI
-                }
-
                 long tx = Interlocked.Read(ref _stats.TxCount), rx = Interlocked.Read(ref _stats.RxCount), txB = Interlocked.Read(ref _stats.TxBytes), rxB = Interlocked.Read(ref _stats.RxBytes), lost = Interlocked.Read(ref _stats.LostCount);
                 if (_config.NeedsRestart) { Console.ForegroundColor = ConsoleColor.Yellow; Console.WriteLine("| RE-JOINING... (Forging IGMP Report)                                                          |"); Console.ResetColor(); ShowHeader(); }
                 double txP = tx - lTx, rxP = rx - lRx, txM = (double)(txB - lTxB) * 8 / 1000000, rxM = (double)(rxB - lRxB) * 8 / 1000000, avgL = 0, curJ = 0;
@@ -153,21 +140,21 @@ namespace MMulticastTool
                 if (Console.KeyAvailable)
                 {
                     var k = Console.ReadKey(true); _isInputMode = true;
-                    Console.WriteLine("\n[MENU] (G)roup, (S)ource, (P)ort, (V)ersion, (M)ode, (D)SCP, (B)W, (s)ize, (T)TL, (C)lear, (R)estore, (Q)uit");
+                    Console.WriteLine("\n[MENU] (G)roup, (S)ource, (P)ort, (V)ersion, (M)ode, (D)SCP, (B)W, si(Z)e, (T)TL, (C)lear, (R)estore, (Q)uit");
                     Console.Write("> Select key to change: ");
                     try {
                         switch (char.ToUpper(k.KeyChar)) {
                             case 'G': Console.Write("New Group: "); var g = Console.ReadLine(); if (!string.IsNullOrEmpty(g)) { _config.GroupAddr = g; _config.NeedsRestart = true; } break;
                             case 'S': Console.Write("New Source: "); var s = Console.ReadLine(); _config.SourceAddr = s; _config.NeedsRestart = true; break;
-                            case 'O': Console.Write("New Port: "); var p = Console.ReadLine(); if (!string.IsNullOrEmpty(p)) { _config.Port = int.Parse(p); _config.NeedsRestart = true; } break;
+                            case 'P': Console.Write("New Port: "); var p = Console.ReadLine(); if (!string.IsNullOrEmpty(p)) { _config.Port = int.Parse(p); _config.NeedsRestart = true; } break;
                             case 'V': Console.Write("IGMP v[2/3]: "); var v = Console.ReadLine(); if (!string.IsNullOrEmpty(v)) { _config.IgmpVersion = int.Parse(v); _config.NeedsRestart = true; } break;
                             case 'M': Console.Write("Mode [i/e]: "); _config.IgmpMode = Console.ReadLine().ToLower().StartsWith("e") ? "exclude" : "include"; _config.NeedsRestart = true; break;
                             case 'D': Console.Write("New DSCP: "); var d = Console.ReadLine(); if (!string.IsNullOrEmpty(d)) _config.Dscp = int.Parse(d); break;
                             case 'B': Console.Write("New BW (Mbps): "); var b = Console.ReadLine(); if (!string.IsNullOrEmpty(b)) { _config.BandwidthMbps = double.Parse(b); RecalculateInterval(); } break;
-                            case 'P': Console.Write("New Size (Max 1472): "); var sz = Console.ReadLine(); if (!string.IsNullOrEmpty(sz)) { int sIn = int.Parse(sz); _config.PacketSize = Math.Max(1, Math.Min(sIn, 1472)); RecalculateInterval(); } break;
+                            case 'Z': Console.Write(string.Format("New Size (Min {0}, Max 1472): ", MToolCore.HEADER_SIZE)); var sz = Console.ReadLine(); if (!string.IsNullOrEmpty(sz)) { int sIn = int.Parse(sz); _config.PacketSize = Math.Max(MToolCore.HEADER_SIZE, Math.Min(sIn, 1472)); RecalculateInterval(); } break;
                             case 'T': Console.Write("New TTL: "); var t = Console.ReadLine(); if (!string.IsNullOrEmpty(t)) _config.Ttl = int.Parse(t); break;
                             case 'C': _stats.Reset(); Console.WriteLine("\n[*] Statistics cleared."); break;
-                            case 'R': _config.GroupAddr = iGrp; _config.Port = iPort; _config.SourceAddr = iSrc; _config.IgmpVersion = iVer; _config.IgmpMode = iMode; _config.Ttl = iTtl; _config.PacketSize = iSize; _config.Dscp = iDscp; _config.BandwidthMbps = iBw; _config.NeedsRestart = true; RecalculateInterval(); Console.WriteLine("\n[*] Parameters restored to initial values."); break;
+                            case 'R': _config.RestoreInitial(); Console.WriteLine("\n[*] Parameters restored to initial values."); break;
                             case 'Q': cts.Cancel(); break;
                         }
                     } catch (Exception ex) { Console.WriteLine("\n[!] Input error: " + ex.Message); }
@@ -229,7 +216,7 @@ namespace MMulticastTool
                     case "-q": case "-qos": case "-dscp": _config.Dscp=int.Parse(args[++i]); break; 
                     case "-b": case "-bw": case "-bandwidth": _config.BandwidthMbps=double.Parse(args[++i]); break; 
                     case "-t": case "-ttl": _config.Ttl=int.Parse(args[++i]); break; 
-                    case "-sz": case "-size": _config.PacketSize=int.Parse(args[++i]); break; 
+                    case "-sz": case "-size": _config.PacketSize=Math.Max(MToolCore.HEADER_SIZE, Math.Min(int.Parse(args[++i]), 1472)); break;
                     case "-w": case "-webport": _config.WebPort=int.Parse(args[++i]); break; 
                 } 
             } 

@@ -43,8 +43,11 @@ namespace MMulticastTool
         public struct pcap_addr { public IntPtr next; public IntPtr addr; public IntPtr netmask; public IntPtr broadaddr; public IntPtr dstaddr; }
         [StructLayout(LayoutKind.Sequential)]
         public struct sockaddr_in { public short sin_family; public ushort sin_port; public uint sin_addr; }
+        // Native pcap_pkthdr uses a C `struct timeval { long tv_sec; long tv_usec; }`.
+        // On Windows, C `long` is always 32-bit (LLP64) regardless of process bitness,
+        // so both fields must map to a 4-byte `int`, not an 8-byte C# `long`.
         [StructLayout(LayoutKind.Sequential)]
-        public struct pcap_pkthdr { public long tv_sec; public int tv_usec; public uint caplen; public uint len; }
+        public struct pcap_pkthdr { public int tv_sec; public int tv_usec; public uint caplen; public uint len; }
         #endregion
 
         public NetworkEngine(AppConfig config, AppStats stats, Action<string, string> logCallback)

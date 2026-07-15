@@ -76,5 +76,28 @@ namespace MMulticastTool
             ActiveGrp = GroupAddr; ActiveSrc = SourceAddr; ActiveVer = IgmpVersion; ActiveIgmpMode = IgmpMode;
             ActivePort = Port; ActiveDscp = Dscp; ActiveTtl = Ttl; ActiveSize = PacketSize; ActiveBw = BandwidthMbps;
         }
+
+        // Snapshot of parameters as first configured (wizard/CLI args), used by "Restore Defaults".
+        private string _iGrp, _iSrc, _iMode;
+        private int _iPort, _iVer, _iTtl, _iSize, _iDscp;
+        private double _iBw;
+        private bool _hasSnapshot = false;
+
+        public void SnapshotInitial()
+        {
+            _iGrp = GroupAddr; _iSrc = SourceAddr; _iMode = IgmpMode;
+            _iPort = Port; _iVer = IgmpVersion; _iTtl = Ttl; _iSize = PacketSize; _iDscp = Dscp;
+            _iBw = BandwidthMbps; _hasSnapshot = true;
+        }
+
+        public void RestoreInitial()
+        {
+            if (!_hasSnapshot) return;
+            GroupAddr = _iGrp; SourceAddr = _iSrc; IgmpMode = _iMode;
+            Port = _iPort; IgmpVersion = _iVer; Ttl = _iTtl; PacketSize = _iSize; Dscp = _iDscp;
+            BandwidthMbps = _iBw;
+            TargetIntervalMs = MToolCore.CalculateIntervalMs(BandwidthMbps, PacketSize, Interval);
+            NeedsRestart = true;
+        }
     }
 }

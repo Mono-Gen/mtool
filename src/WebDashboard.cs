@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Threading;
@@ -21,6 +22,29 @@ namespace MMulticastTool
             _stats = stats;
         }
 
+        // Escapes a string for safe embedding inside a manually-built JSON document.
+        // Values here (group/source/MAC/etc.) originate from user/network input and
+        // must not be allowed to break out of their JSON string literal.
+        private static string JsonEsc(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            var sb = new StringBuilder(s.Length);
+            foreach (char c in s) {
+                switch (c) {
+                    case '"': sb.Append("\\\""); break;
+                    case '\\': sb.Append("\\\\"); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < 0x20) sb.Append(string.Format("\\u{0:x4}", (int)c));
+                        else sb.Append(c);
+                        break;
+                }
+            }
+            return sb.ToString();
+        }
+
         public void AddLog(string evt, string details)
         {
             if (!_config.IsRecording) return;
@@ -33,7 +57,7 @@ namespace MMulticastTool
                 if (_stats.RxCount + _stats.LostCount > 0) curLoss = (double)_stats.LostCount * 100.0 / (_stats.RxCount + _stats.LostCount);
             }
             lock (_logLock) {
-                _logBuffer.AppendLine(string.Format("{0},{1},{2:F2},{3:F2},{4:F0},{5:F0},{6:F2},\"{7}\"", ts, evt, curTx, curRx, curLat, curJit, curLoss, details.Replace("\"", "\"\"")));
+                _logBuffer.AppendLine(string.Format(CultureInfo.InvariantCulture, "{0},{1},{2:F2},{3:F2},{4:F0},{5:F0},{6:F2},\"{7}\"", ts, evt, curTx, curRx, curLat, curJit, curLoss, details.Replace("\"", "\"\"")));
             }
         }
 
@@ -68,19 +92,43 @@ namespace MMulticastTool
             finally { if(listener.IsListening) listener.Close(); }
         }
 
+        // Endpoints that mutate live network/recording state. These must not be triggerable
+        // by a simple cross-origin GET (e.g. an <img> tag on a malicious page), so they require
+        // POST plus a same-origin Referer/Origin header.
+        private static readonly string[] MutatingPaths = { "/api/control", "/api/record", "/api/resetStats", "/api/resetParams" };
+
+        private bool IsSameOrigin(HttpListenerRequest req)
+        {
+            string host = string.Format("localhost:{0}", _config.WebPort), host2 = string.Format("127.0.0.1:{0}", _config.WebPort);
+            string origin = req.Headers["Origin"];
+            if (!string.IsNullOrEmpty(origin)) {
+                Uri o;
+                return Uri.TryCreate(origin, UriKind.Absolute, out o) && (o.Authority == host || o.Authority == host2);
+            }
+            if (req.UrlReferrer != null) return req.UrlReferrer.Authority == host || req.UrlReferrer.Authority == host2;
+            return false; // No Origin and no Referer: refuse rather than assume same-origin.
+        }
+
         private void HandleRequest(HttpListenerContext ctx, CancellationToken ct)
         {
             try {
                 string path = ctx.Request.Url.AbsolutePath;
+                string recordAction = ctx.Request.QueryString["action"];
+                bool isReadOnlyRecord = path == "/api/record" && recordAction != "start" && recordAction != "stop";
+                if (Array.IndexOf(MutatingPaths, path) >= 0 && !isReadOnlyRecord) {
+                    if (ctx.Request.HttpMethod != "POST" || !IsSameOrigin(ctx.Request)) {
+                        ctx.Response.StatusCode = 403; return;
+                    }
+                }
                 if (path == "/api/stats") {
                     double avgL = 0, curJ = 0; string lQ = "-";
                     lock (_stats.StatsLock) { 
                         if (_stats.Latencies.Count > 0) avgL = _stats.Latencies.Average(); curJ = _stats.Jitter; 
                         if (_stats.LastQueryTime != DateTime.MinValue) lQ = (DateTime.Now - _stats.LastQueryTime).TotalSeconds.ToString("F0") + "s ago";
                     }
-                    string json = string.Format("{{\"txCount\":{0},\"txBytes\":{1},\"rxCount\":{2},\"rxBytes\":{3},\"lost\":{4},\"avgLat\":{5},\"jitter\":{6},\"dscp\":{7},\"actualDscp\":{8},\"group\":\"{9}\",\"port\":{10},\"mode\":\"{11}\",\"version\":{12},\"igmpMode\":\"{13}\",\"source\":\"{14}\",\"ttl\":{15},\"size\":{16},\"bw\":{17},\"mac\":\"{18}\",\"actTtl\":{19},\"lastQ\":\"{20}\",\"frag\":{21},\"activeGrp\":\"{22}\",\"activePort\":{23},\"activeSrc\":\"{24}\",\"activeDscp\":{25},\"activeTtl\":{26},\"activeSize\":{27},\"activeBw\":{28},\"activeVer\":{29},\"activeIgmpMode\":\"{30}\",\"isRunning\":{31}}}", 
-                        _stats.TxCount, _stats.TxBytes, _stats.RxCount, _stats.RxBytes, _stats.LostCount, avgL, curJ, _config.Dscp, _stats.ActualDscp, _config.GroupAddr, _config.Port, _config.Mode, _config.IgmpVersion, _config.IgmpMode, _config.SourceAddr, _config.Ttl, _config.PacketSize, _config.BandwidthMbps, _stats.LastSrcMac, _stats.LastTtl, lQ, _stats.FragDetected ? "true" : "false",
-                        _config.ActiveGrp, _config.ActivePort, _config.ActiveSrc, _config.ActiveDscp, _config.ActiveTtl, _config.ActiveSize, _config.ActiveBw, _config.ActiveVer, _config.ActiveIgmpMode, _config.IsRunning ? "true" : "false");
+                    string json = string.Format(CultureInfo.InvariantCulture, "{{\"txCount\":{0},\"txBytes\":{1},\"rxCount\":{2},\"rxBytes\":{3},\"lost\":{4},\"avgLat\":{5},\"jitter\":{6},\"dscp\":{7},\"actualDscp\":{8},\"group\":\"{9}\",\"port\":{10},\"mode\":\"{11}\",\"version\":{12},\"igmpMode\":\"{13}\",\"source\":\"{14}\",\"ttl\":{15},\"size\":{16},\"bw\":{17},\"mac\":\"{18}\",\"actTtl\":{19},\"lastQ\":\"{20}\",\"frag\":{21},\"activeGrp\":\"{22}\",\"activePort\":{23},\"activeSrc\":\"{24}\",\"activeDscp\":{25},\"activeTtl\":{26},\"activeSize\":{27},\"activeBw\":{28},\"activeVer\":{29},\"activeIgmpMode\":\"{30}\",\"isRunning\":{31}}}",
+                        _stats.TxCount, _stats.TxBytes, _stats.RxCount, _stats.RxBytes, _stats.LostCount, avgL, curJ, _config.Dscp, _stats.ActualDscp, JsonEsc(_config.GroupAddr), _config.Port, JsonEsc(_config.Mode), _config.IgmpVersion, JsonEsc(_config.IgmpMode), JsonEsc(_config.SourceAddr), _config.Ttl, _config.PacketSize, _config.BandwidthMbps, JsonEsc(_stats.LastSrcMac), _stats.LastTtl, JsonEsc(lQ), _stats.FragDetected ? "true" : "false",
+                        JsonEsc(_config.ActiveGrp), _config.ActivePort, JsonEsc(_config.ActiveSrc), _config.ActiveDscp, _config.ActiveTtl, _config.ActiveSize, _config.ActiveBw, _config.ActiveVer, JsonEsc(_config.ActiveIgmpMode), _config.IsRunning ? "true" : "false");
                     byte[] b = Encoding.UTF8.GetBytes(json); ctx.Response.ContentType = "application/json"; ctx.Response.OutputStream.Write(b, 0, b.Length);
                 } else if (path == "/api/control") {
                     var q = ctx.Request.QueryString;
@@ -94,7 +142,7 @@ namespace MMulticastTool
                     if (q["dscp"] != null) { int d; if (int.TryParse(q["dscp"], out d) && d >= 0 && d <= 63 && d != _config.Dscp) { AddLog("CONFIG_CHANGE", string.Format("DSCP: {0} -> {1}", _config.Dscp, d)); _config.Dscp = d; } }
                     if (q["bw"] != null) { double b; if (double.TryParse(q["bw"], out b) && b >= 0 && b != _config.BandwidthMbps) { AddLog("CONFIG_CHANGE", string.Format("BW: {0} -> {1} Mbps", _config.BandwidthMbps, b)); _config.BandwidthMbps = b; _config.TargetIntervalMs = MToolCore.CalculateIntervalMs(_config.BandwidthMbps, _config.PacketSize, _config.Interval); } }
                     if (q["ttl"] != null) { int t; if (int.TryParse(q["ttl"], out t) && t > 0 && t <= 255 && t != _config.Ttl) { AddLog("CONFIG_CHANGE", string.Format("TTL: {0} -> {1}", _config.Ttl, t)); _config.Ttl = t; } }
-                    if (q["size"] != null) { int s; if (int.TryParse(q["size"], out s) && s > 0 && s <= 1472 && s != _config.PacketSize) { AddLog("CONFIG_CHANGE", string.Format("Size: {0} -> {1}", _config.PacketSize, s)); _config.PacketSize = s; _config.TargetIntervalMs = MToolCore.CalculateIntervalMs(_config.BandwidthMbps, _config.PacketSize, _config.Interval); } }
+                    if (q["size"] != null) { int s; if (int.TryParse(q["size"], out s) && s >= MToolCore.HEADER_SIZE && s <= 1472 && s != _config.PacketSize) { AddLog("CONFIG_CHANGE", string.Format("Size: {0} -> {1}", _config.PacketSize, s)); _config.PacketSize = s; _config.TargetIntervalMs = MToolCore.CalculateIntervalMs(_config.BandwidthMbps, _config.PacketSize, _config.Interval); } }
                     ctx.Response.StatusCode = 200;
                 } else if (path == "/api/record") {
                     string action = ctx.Request.QueryString["action"];
@@ -117,8 +165,9 @@ namespace MMulticastTool
                 } else if (path == "/api/resetStats") {
                     _stats.Reset(); ctx.Response.StatusCode = 200;
                 } else if (path == "/api/resetParams") {
-                    // This will be handled in Program by restoring initial values
-                    ctx.Response.StatusCode = 202; // Accepted, needs handling in main loop
+                    _config.RestoreInitial();
+                    AddLog("CONFIG_CHANGE", "Restored to initial parameters");
+                    ctx.Response.StatusCode = 200;
                 } else {
                     byte[] b = Encoding.UTF8.GetBytes(WebUI); ctx.Response.ContentType = "text/html"; ctx.Response.OutputStream.Write(b, 0, b.Length);
                 }
@@ -238,7 +287,7 @@ text{fill:#94a3b8;font-size:10px;font-family:monospace}
                 <div id='txOnly2'>
                     <div class='row'><span>DSCP (0-63) <a href='https://tools.ietf.org/html/rfc2474' class='rfc-link' target='_blank'>RFC 2474</a></span><input type='number' id='dIn' min='0' max='63'></div>
                     <div class='row'><span>TTL (1-255)</span><input type='number' id='tIn' min='1' max='255'></div>
-                    <div class='row'><span>Size (1-1472)</span><input type='number' id='szIn' min='1' max='1472'></div>
+                    <div class='row'><span>Size (21-1472)</span><input type='number' id='szIn' min='21' max='1472'></div>
                 </div>
             </div>
         </div>
@@ -386,13 +435,13 @@ function push(arr, v, id) {
 }
 function resetStats() {
     if(!confirm('Reset all statistics?')) return;
-    fetch('/api/resetStats').then(r => {
+    fetch('/api/resetStats', { method: 'POST' }).then(r => {
         if(r.ok) { stats = { tx:[], rx:[], lat:[], jit:[] }; lTxC = 0; lRxC = 0; lTxB = 0; lRxB = 0; }
     });
 }
 function resetParams() {
     if(!confirm('Restore initial parameters?')) return;
-    fetch('/api/resetParams').then(r => {
+    fetch('/api/resetParams', { method: 'POST' }).then(r => {
         if(r.ok) { inputInit = false; }
     });
 }
@@ -400,27 +449,28 @@ function update() {
     const g = document.getElementById('gIn').value, p = document.getElementById('pIn').value, s = document.getElementById('sIn').value;
     const b = document.getElementById('bIn').value, v = document.getElementById('vIn').value, m = document.getElementById('mIn').value;
     const d = document.getElementById('dIn').value, t = document.getElementById('tIn').value, sz = document.getElementById('szIn').value;
-    
+
     if (p < 1 || p > 65535) { alert('Invalid Port (1-65535)'); return; }
     if (d < 0 || d > 63) { alert('Invalid DSCP (0-63)'); return; }
     if (t < 1 || t > 255) { alert('Invalid TTL (1-255)'); return; }
-    if (sz < 1 || sz > 1472) { alert('Invalid Size (1-1472)'); return; }
+    if (sz < 21 || sz > 1472) { alert('Invalid Size (21-1472)'); return; }
 
     const btn = document.getElementById('applyBtn');
     btn.innerText = 'Applying...'; btn.disabled = true;
     isApplying = true;
-    
-    fetch('/api/control?group=' + g + '&port=' + p + '&source=' + s + '&bw=' + b + '&v=' + v + '&mode=' + m + '&dscp=' + d + '&ttl=' + t + '&size=' + sz)
+
+    const qs = 'group=' + encodeURIComponent(g) + '&port=' + p + '&source=' + encodeURIComponent(s) + '&bw=' + b + '&v=' + v + '&mode=' + m + '&dscp=' + d + '&ttl=' + t + '&size=' + sz;
+    fetch('/api/control?' + qs, { method: 'POST' })
         .then(r => { if(!r.ok) { alert('Update Failed'); isApplying = false; btn.disabled = false; btn.innerText = 'Apply Changes'; } })
         .catch(e => { alert('Network Error'); isApplying = false; btn.disabled = false; btn.innerText = 'Apply Changes'; });
 }
 function sendAction(a) {
-    fetch('/api/control?action=' + a).then(r => { if(!r.ok) alert('Action Failed'); });
+    fetch('/api/control?action=' + a, { method: 'POST' }).then(r => { if(!r.ok) alert('Action Failed'); });
 }
 function toggleRecord() {
     const isRec = document.getElementById('btnRec').classList.contains('active');
     const action = isRec ? 'stop' : 'start';
-    fetch('/api/record?action=' + action).then(r => {
+    fetch('/api/record?action=' + action, { method: 'POST' }).then(r => {
         if (r.ok && isRec) {
             window.location.href = '/api/record?action=download';
         }
