@@ -23,7 +23,7 @@
 - **Port Numbers (1-65535)**: Based on [RFC 768 (UDP)](https://tools.ietf.org/html/rfc768), defining the 16-bit source/destination ports.
 - **Multicast Group**: Based on [RFC 1112](https://tools.ietf.org/html/rfc1112), specifying Class D addresses (`224.0.0.0` - `239.255.255.255`).
 - **TTL (1-255)**: 8-bit Time-To-Live. A value ≥ 2 is recommended for routed environments.
-- **Packet Size (Max 1472 bytes)**: The maximum payload size ensuring the UDP packet fits within a standard 1500-byte Ethernet MTU without fragmentation (1500 MTU - 20 IP - 8 UDP).
+- **Packet Size (21-1472 bytes)**: The lower bound is set by mtool's own 21-byte application header (sequence number + timestamp signature); the upper bound ensures the UDP packet fits within a standard 1500-byte Ethernet MTU without fragmentation (1500 MTU - 20 IP - 8 UDP).
 
 ## Usage
 
@@ -52,12 +52,12 @@ mtool.exe
 Press these keys while the program is running to adjust settings:
 - `G`: Change Group address (triggers Re-Join)
 - `S`: Change Source IP (triggers Re-Join/Spoofing)
-- `O`: Change Port number
+- `P`: Change Port number
 - `V`: Toggle IGMP version (2 ⇔ 3)
 - `M`: Toggle IGMP v3 mode (Include ⇔ Exclude)
 - `D`: Change DSCP value
 - `B`: Change Bandwidth (Mbps)
-- `P`: Change Packet Size
+- `Z`: Change Packet Size
 - `T`: Change TTL value
 - `R`: Restore initial parameters (Restore)
 - `C`: Clear statistics
@@ -80,6 +80,6 @@ Press these keys while the program is running to adjust settings:
 - **DSCP**: Actual DSCP value detected in received packets (`Set(Actual)`). Red text indicates a mismatch.
 
 ## Troubleshooting
-- **"Malformed Packet"**: Ensure you are using the latest version of `mtool_npcap.exe` to resolve Big Endian alignment issues.
+- **"Malformed Packet"**: Ensure you are using the latest version of `mtool.exe` to resolve Big Endian alignment issues.
 - **No Reception**: Check Windows Firewall or antivirus settings. For SSM, verify the sender's IP matches your `Source IP` setting.
 - **Npcap Error**: Verify Npcap installation or ensure no other app is exclusively locking the NIC.
