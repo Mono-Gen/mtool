@@ -33,7 +33,7 @@ namespace MMulticastTool
         static async Task MainAsync(string[] args)
         {
             Console.WriteLine("==========================================================================================");
-            Console.WriteLine(" MTOOL v2.0.0 - High-Performance Multicast Testing & Analysis Tool");
+            Console.WriteLine(" MTOOL v2.0.1 - High-Performance Multicast Testing & Analysis Tool");
             Console.WriteLine(" (C) 2026 Mono-Gen. All rights reserved.");
             Console.WriteLine("==========================================================================================\n");
 
@@ -165,7 +165,7 @@ namespace MMulticastTool
         }
 
         static void ShowWizard() {
-            Console.WriteLine("\n=== mtool v2.0.0 Visual Setup ===");
+            Console.WriteLine("\n=== mtool v2.0.1 Visual Setup ===");
             IntPtr alldevs = IntPtr.Zero; byte[] err = new byte[256]; NetworkEngine.pcap_findalldevs(ref alldevs, err);
             List<IntPtr> dPtrs = new List<IntPtr>(); IntPtr cur = alldevs; while(cur!=IntPtr.Zero){ dPtrs.Add(cur); NetworkEngine.pcap_if iface=(NetworkEngine.pcap_if)Marshal.PtrToStructure(cur, typeof(NetworkEngine.pcap_if)); cur=iface.next; }
             for (int i = 0; i < dPtrs.Count; i++) { NetworkEngine.pcap_if f = (NetworkEngine.pcap_if)Marshal.PtrToStructure(dPtrs[i], typeof(NetworkEngine.pcap_if)); Console.WriteLine(" [{0}] {1} (IP: {2})", i, Marshal.PtrToStringAnsi(f.description), NetworkEngine.GetIps(f.addresses)); }
